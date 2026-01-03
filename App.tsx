@@ -1,11 +1,13 @@
+
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { COLOR_THEMES } from './constants';
 import { ColorTheme, GeneratedContent, GeneratedTopic, SocialMediaPosts, SupplementaryInfo } from './types';
-import { generateBlogPost, generateEeatTopicSuggestions, generateCategoryTopicSuggestions, generateEvergreenTopicSuggestions, suggestInteractiveElementForTopic, generateImage, generateTopicsFromMemo, generateLongtailTopicSuggestions, regenerateBlogPostHtml } from './services/geminiService';
+import { generateBlogPost, generateEeatTopicSuggestions, generateCategoryTopicSuggestions, generateEvergreenTopicSuggestions, suggestInteractiveElementForTopic, generateImage, generateTopicsFromMemo, generateLongtailTopicSuggestions, regenerateBlogPostHtml, testGeminiConnection } from './services/geminiService';
 import { testNaverCredentials } from './services/keywordService';
 import { KeywordFighter } from './components/KeywordFighter';
 import { CurrentStatus } from './components/CurrentStatus';
 import { Shortcuts } from './components/Shortcuts';
+import { encryptData, decryptData } from './utils/encryption';
 
 const workerCode = `
 const formatHtmlForDisplay = (html) => {
@@ -667,58 +669,116 @@ const HelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 const SettingsModal: React.FC<{ 
     isOpen: boolean; 
     onClose: () => void;
-    clientId: string;
-    setClientId: (id: string) => void;
-    clientSecret: string;
-    setClientSecret: (secret: string) => void;
-    status: 'unconfigured' | 'testing' | 'success' | 'error';
-    error: string | null;
-    onTestAndSave: () => void;
-}> = ({ isOpen, onClose, clientId, setClientId, clientSecret, setClientSecret, status, error, onTestAndSave }) => {
+    currentGeminiKey: string;
+    onGeminiKeyChange: (key: string) => void;
+    currentNaverId: string;
+    onNaverIdChange: (id: string) => void;
+    currentNaverSecret: string;
+    onNaverSecretChange: (secret: string) => void;
+    onSave: () => void;
+    testingStatus: { gemini: boolean; naver: boolean };
+    connectionStatus: { gemini: 'idle' | 'success' | 'error'; naver: 'idle' | 'success' | 'error' };
+    connectionError: { gemini: string | null; naver: string | null };
+    onTestConnections: () => void;
+}> = ({ 
+    isOpen, onClose, 
+    currentGeminiKey, onGeminiKeyChange, 
+    currentNaverId, onNaverIdChange, 
+    currentNaverSecret, onNaverSecretChange, 
+    onSave, 
+    testingStatus, connectionStatus, connectionError, onTestConnections 
+}) => {
+    
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4" onClick={onClose}>
             <div className="bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full" onClick={e => e.stopPropagation()}>
                 <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-white">설정</h2>
+                    <h2 className="text-2xl font-bold text-white flex items-center">
+                        <span className="mr-2">⚙️</span> API 설정 및 연결 관리
+                    </h2>
                     <button onClick={onClose} className="text-slate-400 hover:text-white text-3xl font-light">&times;</button>
                 </div>
-                <div className="p-6 space-y-6">
-                     <div>
-                        <h3 className="text-lg font-semibold text-white mb-3">Naver 검색 API 설정</h3>
-                        <p className="text-sm text-slate-400 mb-4">'상위 블로그 분석', '네이버 실시간 뉴스' 등 일부 기능을 사용하려면 Naver Developers에서 발급받은 API 키가 필요합니다.</p>
-                        <div className="space-y-4">
+                
+                <div className="p-6 space-y-8">
+                    {/* Gemini API Key Section */}
+                     <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-semibold text-white flex items-center">
+                                <span role="img" aria-label="key" className="mr-2">🔑</span> Google Gemini API
+                            </h3>
+                            <span className={`text-xs px-2 py-1 rounded ${connectionStatus.gemini === 'success' ? 'bg-green-900 text-green-300' : connectionStatus.gemini === 'error' ? 'bg-red-900 text-red-300' : 'bg-slate-700 text-slate-400'}`}>
+                                {connectionStatus.gemini === 'success' ? '연결됨' : connectionStatus.gemini === 'error' ? '연결 실패' : '미확인'}
+                            </span>
+                        </div>
+                        <input
+                            type="password"
+                            value={currentGeminiKey}
+                            onChange={(e) => onGeminiKeyChange(e.target.value)}
+                            placeholder="Google Gemini API Key 입력"
+                            className="w-full bg-slate-900 border border-slate-600 rounded-md px-4 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500"
+                        />
+                        {connectionError.gemini && <p className="text-xs text-red-400">{connectionError.gemini}</p>}
+                        <p className="text-xs text-slate-500">
+                            키가 없으신가요? <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Google AI Studio에서 무료로 발급받기</a>
+                        </p>
+                    </div>
+
+                     <div className="border-t border-slate-700 pt-6 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-semibold text-white flex items-center">
+                                <span className="mr-2">N</span> Naver 검색 API
+                            </h3>
+                             <span className={`text-xs px-2 py-1 rounded ${connectionStatus.naver === 'success' ? 'bg-green-900 text-green-300' : connectionStatus.naver === 'error' ? 'bg-red-900 text-red-300' : 'bg-slate-700 text-slate-400'}`}>
+                                {connectionStatus.naver === 'success' ? '연결됨' : connectionStatus.naver === 'error' ? '연결 실패' : '미확인'}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
                             <input
                                 type="text"
-                                value={clientId}
-                                onChange={(e) => setClientId(e.target.value)}
-                                placeholder="Naver API Client ID"
-                                className="w-full bg-slate-900 border border-slate-600 rounded-md px-4 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500"
+                                value={currentNaverId}
+                                onChange={(e) => onNaverIdChange(e.target.value)}
+                                placeholder="Client ID"
+                                className="bg-slate-900 border border-slate-600 rounded-md px-4 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500"
                             />
                             <input
                                 type="password"
-                                value={clientSecret}
-                                onChange={(e) => setClientSecret(e.target.value)}
-                                placeholder="Naver API Client Secret"
-                                className="w-full bg-slate-900 border border-slate-600 rounded-md px-4 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500"
+                                value={currentNaverSecret}
+                                onChange={(e) => onNaverSecretChange(e.target.value)}
+                                placeholder="Client Secret"
+                                className="bg-slate-900 border border-slate-600 rounded-md px-4 py-2 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500"
                             />
-                            <button
-                                onClick={onTestAndSave}
-                                disabled={status === 'testing' || !clientId || !clientSecret}
-                                className="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-500 transition-colors disabled:bg-slate-600 flex items-center justify-center"
-                            >
-                                {status === 'testing' ? (
-                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                                ) : "연결 테스트 및 저장"}
-                            </button>
                         </div>
-                        <div className="mt-3 text-sm h-5">
-                            {status === 'unconfigured' && <p className="text-yellow-400">💡 Naver API 키를 등록해주세요.</p>}
-                            {status === 'success' && <p className="text-green-400">✅ API가 성공적으로 연결되었습니다.</p>}
-                            {status === 'error' && <p className="text-red-400">❌ 연결 실패: {error}</p>}
-                        </div>
+                        {connectionError.naver && <p className="text-xs text-red-400">{connectionError.naver}</p>}
+                        <p className="text-xs text-slate-500">
+                            '네이버 뉴스', '블로그 분석' 기능을 위해 필요합니다. <a href="https://developers.naver.com/apps/#/register" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Naver Developers에서 발급받기</a>
+                        </p>
                     </div>
+
+                    <div className="flex gap-3 pt-4 border-t border-slate-700">
+                        <button
+                            onClick={onTestConnections}
+                            disabled={testingStatus.gemini || testingStatus.naver}
+                            className="flex-1 bg-slate-700 text-white font-bold py-3 px-4 rounded-md hover:bg-slate-600 transition-colors disabled:bg-slate-800 disabled:text-slate-500 flex justify-center items-center"
+                        >
+                            {(testingStatus.gemini || testingStatus.naver) ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                    연결 테스트 중...
+                                </>
+                            ) : "🔄 연결 테스트"}
+                        </button>
+                        <button
+                            onClick={onSave}
+                            className="flex-1 bg-green-600 text-white font-bold py-3 px-4 rounded-md hover:bg-green-500 transition-colors flex justify-center items-center"
+                        >
+                            💾 암호화 저장 및 닫기
+                        </button>
+                    </div>
+                    <p className="text-center text-xs text-slate-500">
+                        모든 API 키는 암호화되어 사용자 로컬 환경(브라우저)에만 저장됩니다.
+                    </p>
                 </div>
             </div>
         </div>
@@ -757,49 +817,107 @@ function App() {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
 
-  // --- Naver API State ---
+  // --- API Key & Settings State ---
+  const [geminiApiKey, setGeminiApiKey] = useState('');
   const [naverClientId, setNaverClientId] = useState('');
   const [naverClientSecret, setNaverClientSecret] = useState('');
-  const [apiStatus, setApiStatus] = useState<'unconfigured' | 'testing' | 'success' | 'error'>('unconfigured');
-  const [apiError, setApiError] = useState<string | null>(null);
+  
+  // Settings Modal internal testing state
+  const [testingStatus, setTestingStatus] = useState<{ gemini: boolean; naver: boolean }>({ gemini: false, naver: false });
+  const [connectionStatus, setConnectionStatus] = useState<{ gemini: 'idle' | 'success' | 'error'; naver: 'idle' | 'success' | 'error' }>({ gemini: 'idle', naver: 'idle' });
+  const [connectionError, setConnectionError] = useState<{ gemini: string | null; naver: string | null }>({ gemini: null, naver: null });
 
+  // Load encrypted keys on mount
   useEffect(() => {
       try {
-          const id_b64 = localStorage.getItem('naverClientId_b64');
-          const secret_b64 = localStorage.getItem('naverClientSecret_b64');
-          if (id_b64 && secret_b64) {
-              const id = atob(id_b64);
-              const secret = atob(secret_b64);
-              setNaverClientId(id);
-              setNaverClientSecret(secret);
-              setApiStatus('success');
+          const encGemini = localStorage.getItem('geminiApiKey_enc');
+          if (encGemini) {
+              setGeminiApiKey(decryptData(encGemini));
+              setConnectionStatus(prev => ({ ...prev, gemini: 'success' }));
+          } else {
+              // Legacy fallback
+              const oldGemini = localStorage.getItem('geminiApiKey');
+              if (oldGemini) setGeminiApiKey(oldGemini);
           }
+
+          const encNaverId = localStorage.getItem('naverClientId_enc');
+          if (encNaverId) {
+              setNaverClientId(decryptData(encNaverId));
+          } else {
+              // Legacy fallback
+              const oldNaverId = localStorage.getItem('naverClientId_b64');
+              if (oldNaverId) setNaverClientId(atob(oldNaverId));
+          }
+
+          const encNaverSecret = localStorage.getItem('naverClientSecret_enc');
+          if (encNaverSecret) {
+              setNaverClientSecret(decryptData(encNaverSecret));
+              setConnectionStatus(prev => ({ ...prev, naver: 'success' }));
+          } else {
+              // Legacy fallback
+              const oldNaverSecret = localStorage.getItem('naverClientSecret_b64');
+              if (oldNaverSecret) setNaverClientSecret(atob(oldNaverSecret));
+          }
+
       } catch (e) {
-          console.error("Failed to load or decode API keys from localStorage:", e);
-          localStorage.removeItem('naverClientId_b64');
-          localStorage.removeItem('naverClientSecret_b64');
-          setApiStatus('unconfigured');
+          console.error("Failed to load keys", e);
       }
   }, []);
 
-  const handleTestAndSaveCredentials = async () => {
-      if (!naverClientId.trim() || !naverClientSecret.trim()) {
-          setApiError('클라이언트 ID와 시크릿을 모두 입력해주세요.');
-          setApiStatus('error');
-          return;
+  const handleTestConnections = async () => {
+      setConnectionError({ gemini: null, naver: null });
+      
+      // Test Gemini
+      if (geminiApiKey) {
+          setTestingStatus(prev => ({ ...prev, gemini: true }));
+          try {
+              await testGeminiConnection(geminiApiKey);
+              setConnectionStatus(prev => ({ ...prev, gemini: 'success' }));
+          } catch (e) {
+              setConnectionStatus(prev => ({ ...prev, gemini: 'error' }));
+              setConnectionError(prev => ({ ...prev, gemini: e instanceof Error ? e.message : '연결 실패' }));
+          } finally {
+              setTestingStatus(prev => ({ ...prev, gemini: false }));
+          }
       }
-      setApiStatus('testing');
-      setApiError(null);
-      try {
-          await testNaverCredentials(naverClientId, naverClientSecret);
-          localStorage.setItem('naverClientId_b64', btoa(naverClientId));
-          localStorage.setItem('naverClientSecret_b64', btoa(naverClientSecret));
-          setApiStatus('success');
-      } catch (err) {
-          setApiStatus('error');
-          setApiError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+
+      // Test Naver
+      if (naverClientId && naverClientSecret) {
+          setTestingStatus(prev => ({ ...prev, naver: true }));
+          try {
+              await testNaverCredentials(naverClientId, naverClientSecret);
+              setConnectionStatus(prev => ({ ...prev, naver: 'success' }));
+          } catch (e) {
+              setConnectionStatus(prev => ({ ...prev, naver: 'error' }));
+              setConnectionError(prev => ({ ...prev, naver: e instanceof Error ? e.message : '연결 실패' }));
+          } finally {
+              setTestingStatus(prev => ({ ...prev, naver: false }));
+          }
       }
   };
+
+  const handleSaveSettings = () => {
+      // Encrypt and Save to LocalStorage
+      if (geminiApiKey) {
+          localStorage.setItem('geminiApiKey_enc', encryptData(geminiApiKey));
+          // Remove legacy
+          localStorage.removeItem('geminiApiKey');
+      }
+      
+      if (naverClientId) {
+          localStorage.setItem('naverClientId_enc', encryptData(naverClientId));
+          localStorage.removeItem('naverClientId_b64');
+      }
+      
+      if (naverClientSecret) {
+          localStorage.setItem('naverClientSecret_enc', encryptData(naverClientSecret));
+          localStorage.removeItem('naverClientSecret_b64');
+      }
+
+      alert('모든 API 키가 암호화되어 안전하게 저장되었습니다.');
+      setIsSettingsModalOpen(false);
+  };
+
 
   // --- Topic Suggestion State ---
   type TopicSuggestionTab = 'eeat' | 'category' | 'evergreen' | 'longtail' | 'memo';
@@ -1575,7 +1693,7 @@ function App() {
             {mainTab === 'keywordFighter' && (
                <KeywordFighter 
                     onTopicSelect={handleTopicSelectFromFighter} 
-                    isNaverApiConfigured={apiStatus === 'success'}
+                    isNaverApiConfigured={connectionStatus.naver === 'success'}
                     naverClientId={naverClientId}
                     naverClientSecret={naverClientSecret}
                 />
@@ -1876,13 +1994,17 @@ function App() {
       <SettingsModal 
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
-        clientId={naverClientId}
-        setClientId={setNaverClientId}
-        clientSecret={naverClientSecret}
-        setClientSecret={setNaverClientSecret}
-        status={apiStatus}
-        error={apiError}
-        onTestAndSave={handleTestAndSaveCredentials}
+        currentGeminiKey={geminiApiKey}
+        onGeminiKeyChange={setGeminiApiKey}
+        currentNaverId={naverClientId}
+        onNaverIdChange={setNaverClientId}
+        currentNaverSecret={naverClientSecret}
+        onNaverSecretChange={setNaverClientSecret}
+        onSave={handleSaveSettings}
+        testingStatus={testingStatus}
+        connectionStatus={connectionStatus}
+        connectionError={connectionError}
+        onTestConnections={handleTestConnections}
       />
     </div>
   );

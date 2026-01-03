@@ -1,6 +1,7 @@
 
 import type { KeywordData, SearchSource, BlogPostData, KeywordMetrics, GeneratedTopic, BlogStrategyReportData, RecommendedKeyword, SustainableTopicCategory, GoogleSerpData, PaaItem, SerpStrategyReportData, WeatherData, NaverNewsData, NewsStrategyIdea } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
+import { getApiKey } from './geminiService';
 
 // NOTE: To combat the inherent unreliability of public CORS proxies, this service employs a highly resilient, multi-strategy approach.
 // 1. Diverse Strategies: It uses a list of proxies that work differently (e.g., direct pass-through vs. JSON-wrapped content), increasing the chance that at least one method will bypass blocking or server issues.
@@ -254,7 +255,7 @@ export const generateStrategyFromNews = async (news: NaverNewsData[]): Promise<N
     if (!news || news.length === 0) {
         throw new Error("분석할 뉴스 데이터가 없습니다.");
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
 
@@ -336,7 +337,7 @@ export const generateRelatedKeywords = async (keyword: string): Promise<GoogleSe
         throw new Error("키워드가 비어있습니다.");
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
 
@@ -549,7 +550,7 @@ export const analyzeKeywordCompetition = async (keyword: string): Promise<Keywor
         throw new Error("키워드가 비어있습니다.");
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
     
@@ -681,7 +682,7 @@ export const executePromptAsCompetitionAnalysis = async (prompt: string): Promis
         throw new Error("프롬프트가 비어있습니다.");
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
     const wrapperPrompt = `
     당신은 AI 어시스턴트이며, 사용자의 프롬프트를 실행하고 그 결과를 구조화된 SEO 분석 보고서 형식으로 변환하는 임무를 받았습니다.
@@ -784,7 +785,7 @@ export const executePromptAsCompetitionAnalysis = async (prompt: string): Promis
 
 
 const callGenerativeModelForTopics = async (prompt: string): Promise<GeneratedTopic[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
     const responseSchema = {
       type: Type.ARRAY,
@@ -887,7 +888,7 @@ export const generateBlogStrategy = async (keyword: string, posts: BlogPostData[
     if (!keyword.trim()) throw new Error("분석할 키워드가 없습니다.");
     if (!posts || posts.length === 0) throw new Error("분석할 블로그 포스트 데이터가 없습니다.");
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
 
@@ -976,7 +977,7 @@ export const generateSerpStrategy = async (keyword: string, serpData: GoogleSerp
     if (!keyword.trim()) throw new Error("분석할 키워드가 없습니다.");
     if (!serpData) throw new Error("분석할 SERP 데이터가 없습니다.");
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
 
@@ -1071,7 +1072,7 @@ ${paaText}
 
 
 export const fetchRecommendedKeywords = async (): Promise<RecommendedKeyword[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
@@ -1163,7 +1164,7 @@ export const generateSustainableTopics = async (keyword: string): Promise<Sustai
     if (!keyword.trim()) {
         throw new Error("주제를 생성할 키워드가 비어있습니다.");
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const today = new Date();
     const formattedDate = `${today.getFullYear()}년 ${today.getMonth() + 1}월 ${today.getDate()}일`;
 
@@ -1302,7 +1303,7 @@ export const generateSustainableTopics = async (keyword: string): Promise<Sustai
 | 블로그 제목                           | 핵심 키워드                       | 구글 SEO 글쓰기 전략                      |
 | -------------------------------- | ---------------------------- | ---------------------------------- |
 | 반려동물 키우면 진짜 장수할까? 과학적 근거 총정리     | 반려동물, 장수, 건강효과, 심리치유, 과학적연구  | 질문형 제목 → 서두에 연구결과 제시 → 하단 관련 논문 인용 |
-| 강아지보다 고양이가 더 오래 사는 이유            | 반려동물, 수명비교, 강아지, 고양이, 평균수명   | 검색패턴 활용 → 비교 포인트 강조 → 연관 검색어 삽입    |
+| 강아지보다 고양이가 더 오래 사는 이유            | 반려동물, 수명비교, 강아지, 고양이, 평균수명   | 검색패턴 활용 → 비교리뷰형 → 연관 검색어 삽입    |
 | {YYYY+1} 반려동물 트렌드 TOP5, 이제 이런걸 키운다고? | 반려동물, 트렌드, 희귀펫, 인기반려동물, 키우기팁 | 리스트형 구성 → 최근 이슈 연결 → 사례 및 추천       |
 | 반려동물 키울 때 몰라서 손해보는 지원금 총정리       | 반려동물, 지원금, 정부정책, 혜택, 펫보험     | 정보성 콘텐츠 → 최신 정보 업데이트 → 신청 방법 강조    |
 | 고양이가 집사를 진짜 좋아할 때 보이는 행동 7가지     | 반려동물, 고양이, 애정표현, 행동특징, 습관    | 숫자형 리스트 → 사례와 사진 활용 → 검색최적화        |
@@ -1416,7 +1417,7 @@ export const generateSustainableTopics = async (keyword: string): Promise<Sustai
 };
 
 export const fetchCurrentWeather = async (): Promise<WeatherData> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const prompt = `
     오늘 서울의 현재 날씨를 Google 검색을 사용해서 알려주세요. 
     온도, 날씨 상태(예: 맑음, 구름 많음), 풍속, 습도를 포함해야 합니다. 

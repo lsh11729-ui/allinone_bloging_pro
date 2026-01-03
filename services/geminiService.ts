@@ -1,12 +1,49 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { ColorTheme, GeneratedContent, SupplementaryInfo } from '../types';
+import { decryptData } from '../utils/encryption';
 
-const API_KEY = process.env.API_KEY || "";
+// API Key 가져오는 헬퍼 함수
+export const getApiKey = () => {
+    let key = "";
+    
+    // 1. 브라우저 환경에서 암호화된 키 확인
+    if (typeof window !== 'undefined') {
+        const encryptedKey = localStorage.getItem('geminiApiKey_enc');
+        if (encryptedKey) {
+            key = decryptData(encryptedKey);
+        } else {
+            // 하위 호환성: 암호화되지 않은 구버전 키 확인
+            const oldKey = localStorage.getItem('geminiApiKey');
+            if (oldKey) key = oldKey;
+        }
+    }
 
-// 앱 초기 로딩 시 크래시 방지를 위해 최상위 레벨에서의 throw Error 제거
-// 실제 API 호출 시점에 키 유무를 검사합니다.
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+    // 2. 환경 변수 확인 (개발 환경 등)
+    if (!key) {
+        key = process.env.API_KEY || "";
+    }
+    
+    if (!key) {
+        throw new Error("Gemini API Key가 설정되지 않았습니다. 우측 상단 설정(⚙️) 버튼을 눌러 API 키를 입력해주세요.");
+    }
+    return key;
+};
+
+// Gemini API 연결 테스트 함수
+export const testGeminiConnection = async (apiKey: string): Promise<boolean> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: "Hello, just checking connection.",
+        });
+        return !!response.text;
+    } catch (error) {
+        console.error("Gemini Connection Test Failed:", error);
+        throw new Error("Gemini API 연결 실패: 유효하지 않은 키이거나 네트워크 문제입니다.");
+    }
+};
 
 /**
  * Extracts and parses a JSON object from a string that may contain markdown and other text.
@@ -282,7 +319,7 @@ const getPrompt = (topic: string, theme: ColorTheme, interactiveElementIdea: str
       - 순수 HTML, 인라인 CSS, 그리고 \`<script>\` 태그만을 사용하여 구현해야 합니다. 외부 라이브러리(jQuery 등)는 사용하지 마세요.
       - 이 요소는 완벽하게 작동해야 합니다. 사용자가 값을 입력하거나 옵션을 선택하고 버튼을 누르면, 결과가 명확하게 표시되어야 합니다.
       - 요소의 UI(입력 필드, 버튼, 결과 표시 영역 등)는 제공된 \`${theme.name}\` 컬러 테마에 맞춰 디자인해주세요. 특히 버튼에는 \`background-color: ${theme.colors.primary}; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer;\` 스타일과, 호버 시 \`background-color: ${theme.colors.primaryDark}\`를 적용하여 일관성을 유지해주세요.
-      - 요소 전체를 감싸는 \`<div>\`에 \`background-color: ${theme.colors.highlightBg}; padding: 20px; border-radius: 8px; margin: 25px 0;\` 스타일을 적용하여 시각적으로 구분되게 만들어주세요.
+      - 요소 전체를 감싸는 \`<div>\`, \`background-color: ${theme.colors.highlightBg}; padding: 20px; border-radius: 8px; margin: 25px 0;\` 스타일을 적용하여 시각적으로 구분되게 만들어주세요.
       - 모든 텍스트의 색상은 ${theme.colors.text} 를 사용해주세요.
       - **가장 중요**: 생성된 인터랙티브 요소의 HTML 코드 시작 부분에 **빈 줄을 추가한 후** \`<!-- Interactive Element Start -->\` 주석을, 그리고 끝 부분에는 \`<!-- Interactive Element End -->\` 주석 **다음에 빈 줄을 추가**하여 코드 블록을 명확하게 구분해주세요.
     `;
@@ -460,10 +497,8 @@ const getRegenerationPrompt = (originalHtml: string, feedback: string, theme: Co
 export const generateImage = async (prompt: string, aspectRatio: '16:9' | '1:1' = '16:9'): Promise<string | null> => {
     try {
         if (!prompt) return null;
-        if (!API_KEY) {
-             throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
-        }
-
+        
+        const ai = new GoogleGenAI({ apiKey: getApiKey() });
         const imageResponse = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
             prompt: prompt,
@@ -490,9 +525,7 @@ export const generateImage = async (prompt: string, aspectRatio: '16:9' | '1:1' 
 
 export const generateBlogPost = async (topic: string, theme: ColorTheme, shouldGenerateImage: boolean, shouldGenerateSubImages: boolean, interactiveElementIdea: string | null, rawContent: string | null, humanLikeWritingStyle: 'A' | 'B' | null, additionalRequest: string | null, aspectRatio: '16:9' | '1:1', currentDate: string): Promise<GeneratedContent> => {
   try {
-    if (!API_KEY) {
-        throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
-    }
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const prompt = getPrompt(topic, theme, interactiveElementIdea, rawContent, humanLikeWritingStyle, additionalRequest, currentDate);
     const contentResponse = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -560,9 +593,7 @@ export const generateBlogPost = async (topic: string, theme: ColorTheme, shouldG
 
 export const regenerateBlogPostHtml = async (originalHtml: string, feedback: string, theme: ColorTheme, currentDate: string): Promise<string> => {
     try {
-        if (!API_KEY) {
-            throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
-        }
+        const ai = new GoogleGenAI({ apiKey: getApiKey() });
         const prompt = getRegenerationPrompt(originalHtml, feedback, theme, currentDate);
         const contentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -604,9 +635,7 @@ const topicSuggestionSchema = {
 
 const generateTopics = async (prompt: string, useSearch: boolean = false): Promise<string[]> => {
     try {
-        if (!API_KEY) {
-            throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
-        }
+        const ai = new GoogleGenAI({ apiKey: getApiKey() });
         const config: {
             responseMimeType?: "application/json",
             responseSchema?: typeof topicSuggestionSchema,
@@ -684,7 +713,7 @@ export const generateCategoryTopicSuggestions = (category: string, currentDate: 
     당신은 창의적인 콘텐츠 기획자입니다.
     '${category}' 카테고리와 관련된 흥미로운 블로그 포스트 주제 10가지를 추천해주세요.
     독자의 호기심을 자극하고, 실용적인 정보를 제공하며, 소셜 미디어에 공유하고 싶게 만드는 매력적인 주제여야 합니다.
-    오늘은 ${currentDate} 입니다. 제안하는 주제는 오늘 날짜를 기준으로 최신 트렌드를 반영해야 합니다. **시의성이 필요하여 연도를 표시할 경우, 월과 일은 제외하고 연도만 사용해주세요.** 단, 연도가 주제의 핵심이 아닌 이상 불필하게 포함하지 마세요.
+    오늘은 ${currentDate} 입니다. 제안하는 주제는 오늘 날짜의 최신 트렌드를 반영해야 합니다. **시의성이 필요하여 연도를 표시할 경우, 월과 일은 제외하고 연도만 사용해주세요.** 단, 연도가 주제의 핵심이 아닌 이상 불필하게 포함하지 마세요.
     결과는 반드시 한국어로, 구체적인 제목 형식으로 제안해주세요.
   `;
   return generateTopics(prompt);
@@ -737,9 +766,7 @@ export const generateTopicsFromMemo = (memo: string, currentDate: string): Promi
 
 export const suggestInteractiveElementForTopic = async (topic: string): Promise<string> => {
     try {
-        if (!API_KEY) {
-            throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
-        }
+        const ai = new GoogleGenAI({ apiKey: getApiKey() });
         const prompt = `
             You are a creative web developer and UI/UX designer.
             For the blog post topic "${topic}", suggest a single, simple, and engaging interactive element idea that can be implemented using only HTML, CSS, and vanilla JavaScript.
