@@ -2,12 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ColorTheme, GeneratedContent, SupplementaryInfo } from '../types';
 
-const API_KEY = process.env.API_KEY;
+const API_KEY = process.env.API_KEY || "";
 
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable is not set.");
-}
-
+// 앱 초기 로딩 시 크래시 방지를 위해 최상위 레벨에서의 throw Error 제거
+// 실제 API 호출 시점에 키 유무를 검사합니다.
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
@@ -462,6 +460,9 @@ const getRegenerationPrompt = (originalHtml: string, feedback: string, theme: Co
 export const generateImage = async (prompt: string, aspectRatio: '16:9' | '1:1' = '16:9'): Promise<string | null> => {
     try {
         if (!prompt) return null;
+        if (!API_KEY) {
+             throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
+        }
 
         const imageResponse = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
@@ -489,6 +490,9 @@ export const generateImage = async (prompt: string, aspectRatio: '16:9' | '1:1' 
 
 export const generateBlogPost = async (topic: string, theme: ColorTheme, shouldGenerateImage: boolean, shouldGenerateSubImages: boolean, interactiveElementIdea: string | null, rawContent: string | null, humanLikeWritingStyle: 'A' | 'B' | null, additionalRequest: string | null, aspectRatio: '16:9' | '1:1', currentDate: string): Promise<GeneratedContent> => {
   try {
+    if (!API_KEY) {
+        throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
+    }
     const prompt = getPrompt(topic, theme, interactiveElementIdea, rawContent, humanLikeWritingStyle, additionalRequest, currentDate);
     const contentResponse = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -556,6 +560,9 @@ export const generateBlogPost = async (topic: string, theme: ColorTheme, shouldG
 
 export const regenerateBlogPostHtml = async (originalHtml: string, feedback: string, theme: ColorTheme, currentDate: string): Promise<string> => {
     try {
+        if (!API_KEY) {
+            throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
+        }
         const prompt = getRegenerationPrompt(originalHtml, feedback, theme, currentDate);
         const contentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -597,6 +604,9 @@ const topicSuggestionSchema = {
 
 const generateTopics = async (prompt: string, useSearch: boolean = false): Promise<string[]> => {
     try {
+        if (!API_KEY) {
+            throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
+        }
         const config: {
             responseMimeType?: "application/json",
             responseSchema?: typeof topicSuggestionSchema,
@@ -726,15 +736,18 @@ export const generateTopicsFromMemo = (memo: string, currentDate: string): Promi
 };
 
 export const suggestInteractiveElementForTopic = async (topic: string): Promise<string> => {
-    const prompt = `
-        You are a creative web developer and UI/UX designer.
-        For the blog post topic "${topic}", suggest a single, simple, and engaging interactive element idea that can be implemented using only HTML, CSS, and vanilla JavaScript.
-        The idea should be concise and described in a single sentence in Korean.
-        For example: "간단한 투자 수익률을 계산해주는 계산기" or "나에게 맞는 커피 원두를 추천해주는 퀴즈".
-        Just return the idea itself, without any introductory phrases.
-    `;
-
     try {
+        if (!API_KEY) {
+            throw new Error("API Key가 설정되지 않았습니다. Vercel 설정에서 API_KEY를 추가해주세요.");
+        }
+        const prompt = `
+            You are a creative web developer and UI/UX designer.
+            For the blog post topic "${topic}", suggest a single, simple, and engaging interactive element idea that can be implemented using only HTML, CSS, and vanilla JavaScript.
+            The idea should be concise and described in a single sentence in Korean.
+            For example: "간단한 투자 수익률을 계산해주는 계산기" or "나에게 맞는 커피 원두를 추천해주는 퀴즈".
+            Just return the idea itself, without any introductory phrases.
+        `;
+    
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
